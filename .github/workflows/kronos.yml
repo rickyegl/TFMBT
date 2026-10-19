@@ -58,11 +58,13 @@ jobs:
         with:
           path: ~/.cache/huggingface
           key: hf-kronos-${{ matrix.model }}
+      - name: Check fast sampler against the reference
+        run: KRONOS_PATH=Kronos python tests/test_kronos_fast.py
       - name: Backtest
         run: |
           python scripts/run_kronos.py --model ${{ matrix.model }} --split ${{ matrix.split }} \
             --samples ${{ matrix.samples }} --shard ${{ matrix.shard }} --nshards ${{ matrix.nshards }} \
-            --limit ${{ matrix.limit || 0 }} --kronos-path Kronos
+            --limit ${{ matrix.limit || 0 }} --batch 16 --kronos-path Kronos
       - uses: actions/upload-artifact@v4
         with:
           name: shard-${{ matrix.model }}-${{ matrix.split }}-${{ matrix.shard }}

@@ -1,7 +1,11 @@
 {
-  "tag": "timing",
+  "tag": "",
   "runs": [
-    {"model": "small", "split": "validation", "samples": 32, "nshards": 1, "limit": 16},
-    {"model": "base", "split": "validation", "samples": 32, "nshards": 1, "limit": 16}
+    {"model": "mini",  "split": "validation", "samples": 100, "nshards": 2},
+    {"model": "small", "split": "validation", "samples": 100, "nshards": 2},
+    {"model": "base",  "split": "validation", "samples": 100, "nshards": 4},
+    {"model": "mini",  "split": "test",       "samples": 100, "nshards": 4},
+    {"model": "small", "split": "test",       "samples": 100, "nshards": 4},
+    {"model": "base",  "split": "test",       "samples": 100, "nshards": 8}
   ]
 }

@@ -5,6 +5,10 @@ paths of the next 5 candles. All sampled closes are saved (N, S, 5) so the
 mean, median and quantiles can be derived later. Supports sharding so the
 work can be split across GitHub Actions jobs.
 
+Sampling uses kronos_fast.sample_paths (shared-prefix KV cache), which matches
+the reference sampler but needs lookback + 5 - 1 <= max_context, hence the
+default lookback of 508 for the 512-token models.
+
 Needs the Kronos repo on PYTHONPATH (--kronos-path) and Hugging Face access.
 """
 
@@ -37,7 +41,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--split", default="validation", choices=list(common.SPLITS))
     ap.add_argument("--model", default="small", choices=list(MODELS))
-    ap.add_argument("--lookback", type=int, default=512)
+    ap.add_argument("--lookback", type=int, default=0, help="default: max_context - 4")
     ap.add_argument("--samples", type=int, default=32)
     ap.add_argument("--T", type=float, default=1.0)
     ap.add_argument("--top-p", type=float, default=0.9)
@@ -53,7 +57,7 @@ def main():
     import torch
     sys.path.insert(0, a.kronos_path)
     from model import Kronos, KronosTokenizer
-    from model.kronos import auto_regressive_inference
+    import kronos_fast
 
     torch.set_num_threads(os.cpu_count())
     torch.manual_seed(a.seed + a.shard)
@@ -62,7 +66,7 @@ def main():
     model_id, tok_id, max_ctx = MODELS[a.model]
     tokenizer = KronosTokenizer.from_pretrained(tok_id).to(device).eval()
     model = Kronos.from_pretrained(model_id).to(device).eval()
-    lookback = min(a.lookback, max_ctx)
+    lookback = a.lookback or max_ctx - common.HORIZON + 1
 
     df = common.load_bars()
     feats = df[FEATURES].to_numpy(np.float32)
@@ -85,12 +89,11 @@ def main():
         xs = np.stack([stamps[i - lookback + 1: i + 1] for i in sub])
         ys = np.stack([stamps[i + 1: i + 1 + H] for i in sub])
 
-        rep = lambda z: torch.from_numpy(np.repeat(z, S, axis=0)).to(device)  # noqa: E731
-        preds = auto_regressive_inference(
-            tokenizer, model, rep(x), rep(xs), rep(ys), max_ctx, H,
-            clip=5, T=a.T, top_k=0, top_p=a.top_p, sample_count=1)
-        close = preds[:, -H:, 3].reshape(len(sub), S, H)
-        out[s: s + len(sub)] = close * (std[:, :, 3] + 1e-5) + mean[:, :, 3]
+        t = lambda z: torch.from_numpy(np.ascontiguousarray(z, np.float32)).to(device)  # noqa: E731
+        z = kronos_fast.sample_paths(tokenizer, model, t(x), t(xs), t(ys), H, S, max_context=max_ctx,
+                                     T=a.T, top_k=0, top_p=a.top_p)
+        close = z[..., 3].cpu().numpy()                                       # (B, S, H)
+        out[s: s + len(sub)] = close * (std[:, :, 3:4] + 1e-5) + mean[:, :, 3:4]
         done = s + len(sub)
         el = time.time() - t0
         print(f"{a.model} {a.split} shard {a.shard}: {done}/{len(idx)} "
