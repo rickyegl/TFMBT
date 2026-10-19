@@ -1,10 +1,43 @@
 {
-  "runs": [
-    {"split": "validation", "mode": "price",   "context": 4096,  "nshards": 2, "batch": 16},
-    {"split": "validation", "mode": "returns", "context": 4096,  "nshards": 2, "batch": 16},
-    {"split": "validation", "mode": "price5m", "context": 4096,  "nshards": 2, "batch": 16},
-    {"split": "validation", "mode": "price",   "context": 8192,  "nshards": 4, "batch": 16},
-    {"split": "validation", "mode": "returns", "context": 8192,  "nshards": 4, "batch": 16},
-    {"split": "validation", "mode": "price",   "context": 16000, "nshards": 8, "batch": 8}
-  ]
+ "runs": [
+  {
+   "split": "validation",
+   "mode": "returns",
+   "context": 16000,
+   "nshards": 8,
+   "batch": 8
+  },
+  {
+   "split": "validation",
+   "mode": "price",
+   "context": 4096,
+   "nshards": 2,
+   "batch": 16,
+   "no_flip": true
+  },
+  {
+   "split": "validation",
+   "mode": "price",
+   "context": 8192,
+   "nshards": 4,
+   "batch": 16,
+   "no_flip": true
+  },
+  {
+   "split": "validation",
+   "mode": "price",
+   "context": 16000,
+   "nshards": 8,
+   "batch": 8,
+   "no_flip": true
+  },
+  {
+   "split": "validation",
+   "mode": "returns",
+   "context": 8192,
+   "nshards": 4,
+   "batch": 16,
+   "no_flip": true
+  }
+ ]
 }
