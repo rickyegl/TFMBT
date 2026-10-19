@@ -1,0 +1,5 @@
+.venv/
+checkpoints/
+__pycache__/
+results/kronos_shards/
+*.log

@@ -1,0 +1,7 @@
+{
+  "tag": "timing",
+  "runs": [
+    {"model": "small", "split": "validation", "samples": 32, "nshards": 1, "limit": 16},
+    {"model": "base", "split": "validation", "samples": 32, "nshards": 1, "limit": 16}
+  ]
+}
