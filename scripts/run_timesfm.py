@@ -70,6 +70,9 @@ def main():
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--limit", type=int, default=0, help="debug: only first N origins")
     ap.add_argument("--name", default=None)
+    ap.add_argument("--shard", type=int, default=0)
+    ap.add_argument("--nshards", type=int, default=1)
+    ap.add_argument("--ckpt", default=CKPT)
     a = ap.parse_args()
 
     import timesfm
@@ -80,9 +83,10 @@ def main():
     idx = common.origins(df, a.split)
     if a.limit:
         idx = idx[: a.limit]
+    idx = np.array_split(idx, a.nshards)[a.shard]
 
     model = timesfm.TimesFM_2p5_200M_flax()
-    model.load_checkpoint(CKPT)
+    model.load_checkpoint(a.ckpt)
     model.compile(timesfm.ForecastConfig(
         max_context=a.context,
         max_horizon=128,
@@ -105,6 +109,13 @@ def main():
         print(f"{name} {a.split}: {s + len(sub)}/{len(idx)} ({time.time() - t0:.0f}s)", flush=True)
     point, quant = to_prices(close, idx, a.mode, np.concatenate(points), np.concatenate(quants))
 
+    if a.nshards > 1:
+        d = os.path.join(common.RESULTS, "timesfm_shards")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, f"{name}__{a.split}__{a.shard:03d}of{a.nshards:03d}.npz")
+        np.savez_compressed(path, origin=idx, point=point, quantiles=quant, meta=np.array(repr(vars(a))))
+        print(path)
+        return
     path = common.save_preds(name, a.split, idx, point, quant, meta=vars(a))
     r = common.score(df, idx, point, quant[..., 1:])
     print(path)

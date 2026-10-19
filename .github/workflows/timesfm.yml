@@ -1,0 +1,114 @@
+# Sharded TimesFM 2.5 backtests on GitHub-hosted runners. Edit
+# ci/timesfm_plan.json and push; merged predictions are committed back to the
+# branch under results/.
+name: timesfm
+
+on:
+  push:
+    paths:
+      - ci/timesfm_plan.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: timesfm-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CKPT_URL: https://storage.googleapis.com/vertex-model-garden-public-us/timesfm/timesfm-2.5-200m-flax
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          plan = json.load(open("ci/timesfm_plan.json"))
+          inc = []
+          for r in plan["runs"]:
+              args = f"--split {r['split']} --mode {r['mode']} --context {r['context']}"
+              if r.get("no_flip"):
+                  args += " --no-flip"
+              if r.get("batch"):
+                  args += f" --batch {r['batch']}"
+              for s in range(r["nshards"]):
+                  inc.append({"label": f"{r['mode']} L{r['context']} {r['split']} {s}/{r['nshards']}",
+                              "args": f"{args} --shard {s} --nshards {r['nshards']}"})
+          print("matrix=" + json.dumps({"include": inc}))
+          PY
+
+  backtest:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install --quiet "jax[cpu]" flax optax einshape orbax-checkpoint jaxtyping numpy pandas huggingface_hub safetensors
+          pip install --quiet --no-deps timesfm==3.0.2
+      - uses: actions/cache@v4
+        id: ckpt
+        with:
+          path: checkpoints/timesfm-2.5-200m-flax
+          key: timesfm-2.5-200m-flax
+      - name: Download checkpoint
+        if: steps.ckpt.outputs.cache-hit != 'true'
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          base = "https://storage.googleapis.com/storage/v1/b/vertex-model-garden-public-us/o"
+          q = "?prefix=timesfm/timesfm-2.5-200m-flax/&maxResults=200"
+          for o in json.load(urllib.request.urlopen(base + q))["items"]:
+              rel = o["name"].split("timesfm-2.5-200m-flax/", 1)[1]
+              dst = os.path.join("checkpoints/timesfm-2.5-200m-flax", rel)
+              os.makedirs(os.path.dirname(dst), exist_ok=True)
+              urllib.request.urlretrieve(os.environ["CKPT_URL"] + "/" + rel, dst)
+          PY
+      - name: Backtest
+        run: python scripts/run_timesfm.py ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfm-${{ strategy.job-index }}
+          path: results/timesfm_shards/*.npz
+
+  merge:
+    needs: [plan, backtest]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet numpy pandas
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tfm-*
+          path: results/timesfm_shards
+          merge-multiple: true
+      - name: Merge and commit
+        run: |
+          python scripts/merge_timesfm.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add results/preds_timesfm_*
+          git commit -m "TimesFM backtest results [skip ci]" || exit 0
+          for i in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            sleep $((i * 5))
+          done

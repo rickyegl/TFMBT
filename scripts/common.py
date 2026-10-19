@@ -83,6 +83,8 @@ def diebold_mariano(e_model: np.ndarray, e_base: np.ndarray, power: int = 2, lag
     from math import erf, sqrt
     d = np.abs(e_model) ** power - np.abs(e_base) ** power
     var = _newey_west_var(d, lags)
+    if var <= 0:
+        return float("nan"), float("nan")
     stat = d.mean() / np.sqrt(var / len(d))
     p = 2 * (1 - 0.5 * (1 + erf(abs(stat) / sqrt(2))))
     return float(stat), float(p)
