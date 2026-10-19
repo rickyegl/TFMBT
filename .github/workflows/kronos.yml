@@ -64,7 +64,7 @@ jobs:
         run: |
           python scripts/run_kronos.py --model ${{ matrix.model }} --split ${{ matrix.split }} \
             --samples ${{ matrix.samples }} --shard ${{ matrix.shard }} --nshards ${{ matrix.nshards }} \
-            --limit ${{ matrix.limit || 0 }} --batch 16 --kronos-path Kronos
+            --limit ${{ matrix.limit || 0 }} --batch 16 --kronos-path Kronos --verify
       - uses: actions/upload-artifact@v4
         with:
           name: shard-${{ matrix.model }}-${{ matrix.split }}-${{ matrix.shard }}

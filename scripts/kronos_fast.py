@@ -87,12 +87,15 @@ def _cross_kv(cross, h):
 
 @torch.no_grad()
 def sample_paths(tokenizer, model, x, x_stamp, y_stamp, pred_len, samples,
-                 max_context=512, T=1.0, top_k=0, top_p=0.9, sampler=None):
+                 max_context=512, T=1.0, top_k=0, top_p=0.9, sampler=None,
+                 return_context_recon=False):
     """Sample `samples` future paths per series.
 
     x: (B, L, 6) normalised + clipped features; x_stamp: (B, L, 5);
     y_stamp: (B, pred_len, 5). Returns (B, samples, pred_len, 6) in the
     normalised space (same as the reference before de-normalisation).
+    With return_context_recon, also returns the tokenizer's reconstruction of
+    the last observed bar, (B, 6), from the same decoder pass.
     """
     if sampler is None:
         from model.kronos import sample_from_logits as sampler
@@ -161,5 +164,7 @@ def sample_paths(tokenizer, model, x, x_stamp, y_stamp, pred_len, samples,
     zn = tokenizer.post_quant_embed(tokenizer.indices_to_bits([g1, g2], half=True))
     for j, layer in enumerate(tokenizer.decoder):
         zn, _ = _step_block(layer, zn, L - start, dec_kv[j], None, B, S)
-    z = tokenizer.head(zn)                                     # (N, pred_len, 6)
-    return z.view(B, S, pred_len, -1)
+    z = tokenizer.head(zn).view(B, S, pred_len, -1)
+    if return_context_recon:
+        return z, tokenizer.head(zp[:, -1])
+    return z
